@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Download, ArrowLeft, Save } from 'lucide-react';
 import ConfigLayout from '../components/layouts/ConfigLayout';
 import { utils, writeFile } from 'xlsx';
+import html2canvas from 'html2canvas';
 
 interface SlotTeamMatchResult {
   slot: number;
@@ -16,6 +17,8 @@ interface SlotTeamMatch {
   type: 'semifinal' | 'final';
   matchNumber: number;
   slotTeams: SlotTeamMatchResult[];
+  tournamentName?: string;
+  tournamentDate?: string;
 }
 
 interface TeamStanding {
@@ -32,6 +35,9 @@ const SlotTeamFinalResult: React.FC = () => {
   const navigate = useNavigate();
   const [matches, setMatches] = useState<SlotTeamMatch[]>([]);
   const [standings, setStandings] = useState<TeamStanding[]>([]);
+  const [tournamentName, setTournamentName] = useState('');
+  const [tournamentDate, setTournamentDate] = useState('');
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   useEffect(() => {
     const loadData = () => {
@@ -41,6 +47,13 @@ const SlotTeamFinalResult: React.FC = () => {
       if (savedMatches) {
         const parsedMatches = JSON.parse(savedMatches);
         setMatches(parsedMatches);
+        
+        // Get tournament info from first match
+        if (parsedMatches.length > 0) {
+          setTournamentName(parsedMatches[0].tournamentName || '');
+          setTournamentDate(parsedMatches[0].tournamentDate || '');
+        }
+        
         calculateStandings(parsedMatches, gameConf);
       }
     };
@@ -107,10 +120,6 @@ const SlotTeamFinalResult: React.FC = () => {
     setStandings(sortedStandings);
   };
 
-  const getPodiumData = () => {
-    return standings.slice(0, 3);
-  };
-
   const exportToExcel = () => {
     const dataToExport = standings.map((standing, index) => ({
       'Rank': index + 1,
@@ -129,79 +138,529 @@ const SlotTeamFinalResult: React.FC = () => {
     writeFile(workbook, `slot-team-standings-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const getMedalEmoji = (position: number): string => {
-    switch (position) {
-      case 0:
-        return '🥇';
-      case 1:
-        return '🥈';
-      case 2:
-        return '🥉';
-      default:
-        return '';
+  const downloadPointsTableTemplate = async (templateId: number) => {
+    const gameConfig = JSON.parse(localStorage.getItem('slotTeamGameConfig') || '{}');
+    const killPoints = gameConfig.killPoints || 5;
+    const date = new Date(tournamentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const rows = standings.map((team, index) => {
+      let medalColor = '';
+      if (index === 0) medalColor = '#FFD700';
+      else if (index === 1) medalColor = '#C0C0C0';
+      else if (index === 2) medalColor = '#CD7F32';
+
+      const killPointsTotal = team.totalKills * killPoints;
+      return `<tr style="${index < 3 ? `background-color: rgba(${index === 0 ? '255,215,0' : index === 1 ? '192,192,192' : '205,127,50'}, 0.15);` : ''}">
+        <td style="font-weight: bold; color: ${medalColor || '#000000ff'};">${index < 3 ? ['🥇', '🥈', '🥉'][index] : index + 1}</td>
+        <td style="font-weight: 600;">${team.teamName}</td>
+        <td style="text-align: center;">${team.boyaahCount}</td>
+        <td style="text-align: center; font-weight: 500;">${killPointsTotal}</td>
+        <td style="text-align: center; font-weight: 500;">${team.totalPositionPoints}</td>
+        <td style="text-align: center; font-weight: bold; font-size: 16px;">${team.totalPoints}</td>
+      </tr>`;
+    }).join('');
+
+    let htmlContent = '';
+
+    if (templateId === 1) {
+      // Template 1: Professional Corporate
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${tournamentName || 'Tournament'} - Points Table</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+              font-family: 'Segoe UI', 'Arial', sans-serif;
+              background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+              color: #222;
+              padding: 40px 20px;
+              min-height: 100vh;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+              background: #ffffff;
+              border-radius: 12px;
+              padding: 60px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 50px;
+              padding-bottom: 30px;
+              border-bottom: 3px solid #1f2937;
+            }
+            .tournament-title {
+              font-size: 48px;
+              font-weight: 800;
+              color: #1f2937;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 2px;
+            }
+            .tournament-date {
+              font-size: 16px;
+              color: #6b7280;
+              font-weight: 500;
+              margin-bottom: 5px;
+            }
+            .badge {
+              display: inline-block;
+   
+              color: black;
+              padding: 8px 16px;
+              border-radius: 20px;
+              font-size: 25px;
+              font-weight: 800;
+              margin-top: 15px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 30px;
+            }
+            th {
+              background: #1f2937;
+              color: white;
+              padding: 16px;
+              text-align: left;
+              font-size: 13px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              border: none;
+            }
+            td {
+              padding: 16px;
+              border-bottom: 1px solid #e5e7eb;
+              font-size: 15px;
+              color: #374151;
+            }
+            tr:last-child td {
+              border-bottom: none;
+            }
+            tr:hover {
+              background: #f9fafb;
+            }
+            @media (max-width: 768px) {
+              .container { padding: 30px 20px; }
+              .tournament-title { font-size: 32px; }
+              th, td { padding: 12px 8px; font-size: 14px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="tournament-title">${tournamentName}</div>
+<div class="badge">Overall STANDINGS</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 70px;">RANK</th>
+                  <th>TEAM</th>
+                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
+                  <th style="width: 100px; text-align: center;">KILL PTS</th>
+                  <th style="width: 100px; text-align: center;">POS PTS</th>
+                  <th style="width: 100px; text-align: center;">TOTAL PTS</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        </body>
+        </html>
+      `;
+    } else if (templateId === 2) {
+      // Template 2: Gaming Victory
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${tournamentName || 'Tournament'} - Points Table</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+              font-family: 'Arial', sans-serif;
+              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+              color: #fff;
+              padding: 40px 20px;
+              min-height: 100vh;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+              background: rgba(22, 33, 62, 0.95);
+              border: 3px solid #00d4ff;
+              border-radius: 8px;
+              padding: 60px;
+              box-shadow: 0 0 40px rgba(0, 212, 255, 0.3), inset 0 0 40px rgba(0, 212, 255, 0.05);
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 50px;
+              padding-bottom: 30px;
+              border-bottom: 2px solid #00d4ff;
+            }
+            .tournament-title {
+              font-size: 52px;
+              font-weight: 900;
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              background-clip: text;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 3px;
+            }
+          
+            .badge {
+              display: inline-block;
+           
+              color: #ffffffff;
+              padding: 10px 20px;
+              border-radius: 4px;
+              font-size: 25px;
+              font-weight: 900;
+              margin-top: 15px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 30px;
+            }
+            th {
+              background: linear-gradient(90deg, #00d4ff, #0099ff);
+              color: #1a1a2e;
+              padding: 16px;
+              text-align: left;
+              font-size: 13px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            td {
+              padding: 16px;
+              border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+              font-size: 15px;
+            }
+            tr:last-child td {
+              border-bottom: none;
+            }
+            tr:hover {
+              background: rgba(0, 212, 255, 0.1);
+            }
+            @media (max-width: 768px) {
+              .container { padding: 30px 20px; }
+              .tournament-title { font-size: 36px; }
+              th, td { padding: 12px 8px; font-size: 14px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="tournament-title"> ${tournamentName}</div>
+<div class="badge">Overall STANDINGS</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 70px;">RANK</th>
+                  <th>TEAM</th>
+                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
+                  <th style="width: 100px; text-align: center;">KILL PTS</th>
+                  <th style="width: 100px; text-align: center;">POS PTS</th>
+                  <th style="width: 100px; text-align: center;">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        </body>
+        </html>
+      `;
+    } else if (templateId === 3) {
+      // Template 3: Esports Championship
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${tournamentName || 'Tournament'} - Points Table</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+              font-family: 'Arial Black', sans-serif;
+              background: linear-gradient(135deg, #0a0e27 0%, #1a1a3e 100%);
+              color: #fff;
+              padding: 40px 20px;
+              min-height: 100vh;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+              background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+              border: 2px solid #f97316;
+              border-radius: 4px;
+              padding: 60px;
+              box-shadow: 0 0 60px rgba(249, 115, 22, 0.4);
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 50px;
+              padding-bottom: 30px;
+              border-bottom: 3px solid #f97316;
+            }
+            .tournament-title {
+              font-size: 56px;
+              font-weight: 900;
+              color: #f97316;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 3px;
+              text-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+            }
+           
+            .badge {
+              display: inline-block;
+              color: white;
+              padding: 10px 24px;
+              border-radius: 2px;
+              font-size: 25px;
+              font-weight: 900;
+              margin-top: 15px;
+              text-transform: uppercase;
+              letter-spacing: 2px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 30px;
+            }
+            th {
+              background: #f97316;
+              color: white;
+              padding: 18px;
+              text-align: left;
+              font-size: 13px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 2px;
+            }
+            td {
+              padding: 16px 18px;
+              border-bottom: 1px solid #374151;
+              font-size: 15px;
+            }
+            tr:last-child td {
+              border-bottom: none;
+            }
+            tr:hover {
+              background: rgba(249, 115, 22, 0.1);
+            }
+            @media (max-width: 768px) {
+              .container { padding: 30px 20px; }
+              .tournament-title { font-size: 40px; }
+              th, td { padding: 12px 10px; font-size: 14px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="tournament-title"> ${tournamentName}</div>
+<div class="badge">Overall STANDINGS</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 70px;">RANK</th>
+                  <th>TEAM</th>
+                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
+                  <th style="width: 100px; text-align: center;">KILL PTS</th>
+                  <th style="width: 100px; text-align: center;">POS PTS</th>
+                  <th style="width: 100px; text-align: center;">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        </body>
+        </html>
+      `;
+    } else if (templateId === 4) {
+      // Template 4: Elite Tournament
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${tournamentName || 'Tournament'} - Points Table</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+              font-family: 'Georgia', serif;
+              background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+              color: #fff;
+              padding: 40px 20px;
+              min-height: 100vh;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+              background: #1f1f1f;
+              border: 3px solid #d4af37;
+              border-radius: 0px;
+              padding: 60px;
+              box-shadow: 0 0 50px rgba(212, 175, 55, 0.3), inset 0 0 30px rgba(212, 175, 55, 0.05);
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 50px;
+              padding-bottom: 40px;
+              border-bottom: 3px solid #d4af37;
+            }
+            .tournament-title {
+              font-size: 54px;
+              font-weight: 900;
+              color: #d4af37;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              letter-spacing: 4px;
+              font-style: italic;
+            }
+         
+            .badge {
+              display: inline-block;
+
+              color: #ffffffff;
+              padding: 12px 28px;
+              border-radius: 0px;
+              font-size: 25px;
+              font-weight: 900;
+              margin-top: 20px;
+              text-transform: uppercase;
+              letter-spacing: 2px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 35px;
+            }
+            th {
+              background: #d4af37;
+              color: #1f1f1f;
+              padding: 18px;
+              text-align: left;
+              font-size: 13px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 2px;
+            }
+            td {
+              padding: 16px 18px;
+              border-bottom: 2px solid #333;
+              font-size: 15px;
+            }
+            tr:last-child td {
+              border-bottom: none;
+            }
+            tr:hover {
+              background: rgba(212, 175, 55, 0.08);
+            }
+            @media (max-width: 768px) {
+              .container { padding: 30px 20px; }
+              .tournament-title { font-size: 38px; }
+              th, td { padding: 12px 10px; font-size: 14px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="tournament-title"> ${tournamentName}</div>
+<div class="badge">Overall STANDINGS</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 70px;">RANK</th>
+                  <th>TEAM</th>
+                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
+                  <th style="width: 100px; text-align: center;">KILL PTS</th>
+                  <th style="width: 100px; text-align: center;">POS PTS</th>
+                  <th style="width: 100px; text-align: center;">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        </body>
+        </html>
+      `;
+    }
+
+    // Create a temporary container and render HTML to image
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    tempDiv.style.position = 'fixed';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.top = '-9999px';
+    document.body.appendChild(tempDiv);
+
+    try {
+      const canvas = await html2canvas(tempDiv, {
+        backgroundColor: '#fff',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      });
+
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `${tournamentName}-Points-Table-${new Date().toISOString().split('T')[0]}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error generating image:', error);
+      alert('Failed to generate template image');
+    } finally {
+      document.body.removeChild(tempDiv);
+      setShowTemplateModal(false);
     }
   };
 
   return (
     <ConfigLayout title="Final Results - Slot & Team Calculator">
       <div className="space-y-8">
-        {/* Podium Section */}
-        {getPodiumData().length > 0 && (
-          <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-lg p-8 shadow-lg">
-            <h2 className="text-3xl font-bold text-center mb-8 bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-400">
-              🏆 Podium
-            </h2>
-            <div className="flex justify-center items-end gap-6 mb-6 flex-wrap">
-              {/* Silver - 2nd Place */}
-              {getPodiumData().length > 1 && (
-                <div className="flex flex-col items-center">
-                  <div className="text-8xl mb-2">🥈</div>
-                  <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-lg p-4 w-48 text-center">
-                    <p className="text-2xl font-bold text-white mb-2">
-                      {getPodiumData()[1].teamName}
-                    </p>
-                    <p className="text-gray-400 mb-2">Slot {getPodiumData()[1].slot}</p>
-                    <p className="text-2xl font-bold text-yellow-400">
-                      {getPodiumData()[1].totalPoints}
-                    </p>
-                    <p className="text-xs text-gray-500">Total Points</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Gold - 1st Place */}
-              {getPodiumData().length > 0 && (
-                <div className="flex flex-col items-center">
-                  <div className="text-9xl mb-2">🥇</div>
-                  <div className="backdrop-blur-md bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-lg p-4 w-48 text-center transform scale-105">
-                    <p className="text-2xl font-bold text-white mb-2">
-                      {getPodiumData()[0].teamName}
-                    </p>
-                    <p className="text-gray-400 mb-2">Slot {getPodiumData()[0].slot}</p>
-                    <p className="text-3xl font-bold text-yellow-400">
-                      {getPodiumData()[0].totalPoints}
-                    </p>
-                    <p className="text-xs text-gray-500">Total Points</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Bronze - 3rd Place */}
-              {getPodiumData().length > 2 && (
-                <div className="flex flex-col items-center">
-                  <div className="text-8xl mb-2">🥉</div>
-                  <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-lg p-4 w-48 text-center">
-                    <p className="text-2xl font-bold text-white mb-2">
-                      {getPodiumData()[2].teamName}
-                    </p>
-                    <p className="text-gray-400 mb-2">Slot {getPodiumData()[2].slot}</p>
-                    <p className="text-2xl font-bold text-orange-400">
-                      {getPodiumData()[2].totalPoints}
-                    </p>
-                    <p className="text-xs text-gray-500">Total Points</p>
-                  </div>
-                </div>
-              )}
+        {(tournamentName || tournamentDate) && (
+          <div className="backdrop-blur-md bg-gradient-to-r from-purple-600/20 to-purple-800/20 border border-purple-400/30 rounded-lg p-6 shadow-lg">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                {tournamentName && (
+                  <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">{tournamentName}</h1>
+                )}
+                {tournamentDate && (
+                  <p className="text-gray-300 text-lg">📅 {new Date(tournamentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -230,12 +689,10 @@ const SlotTeamFinalResult: React.FC = () => {
                   return (
                     <tr 
                       key={index} 
-                      className={`border-b border-white/10 hover:bg-white/5 transition-colors ${
-                        index === 0 ? 'bg-yellow-500/10' : index === 1 ? 'bg-gray-400/10' : index === 2 ? 'bg-orange-500/10' : ''
-                      }`}
+                      className="border-b border-white/10 hover:bg-white/5 transition-colors"
                     >
                       <td className="px-4 py-3 font-bold text-purple-400">
-                        {index < 3 && getMedalEmoji(index)} #{index + 1}
+                        #{index + 1}
                       </td>
                       <td className="px-4 py-3 font-semibold text-white">{standing.teamName}</td>
                       <td className="px-4 py-3 text-center text-gray-300">{standing.matchesPlayed}</td>
@@ -264,6 +721,14 @@ const SlotTeamFinalResult: React.FC = () => {
           </button>
 
           <div className="flex gap-4 flex-wrap">
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md flex items-center transition-colors"
+            >
+              <Download size={18} className="mr-2" />
+              Download Template
+            </button>
+
             <button
               onClick={exportToExcel}
               className="bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 text-white px-6 py-3 rounded-md flex items-center transition-all hover:shadow-lg"
@@ -301,6 +766,149 @@ const SlotTeamFinalResult: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Template Selection Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto border border-white/20 shadow-2xl">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-purple-900 to-purple-800 px-6 py-6 border-b border-white/10">
+              <h2 className="text-3xl font-bold text-white">Choose Your Template</h2>
+              <p className="text-purple-200 text-sm mt-1">Select and download your tournament standings in your preferred style</p>
+            </div>
+
+            {/* Templates Grid */}
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Template 1: Professional Corporate */}
+              <div 
+                onClick={() => downloadPointsTableTemplate(1)}
+                className="cursor-pointer group"
+              >
+                <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden border-2 border-gray-300 hover:border-gray-400 transition-all duration-300 hover:shadow-xl hover:scale-105">
+                  {/* Preview */}
+                  <div className="aspect-video bg-white p-4 flex flex-col justify-center items-center border-b border-gray-300">
+                    <div className="text-center w-full">
+                      <h3 className="text-gray-800 font-bold text-lg mb-1">Tournament Name</h3>
+                      <div className="w-full h-12 bg-gray-700 rounded mb-2"></div>
+                      <div className="grid grid-cols-4 gap-1 w-full">
+                        <div className="h-6 bg-gray-200 rounded"></div>
+                        <div className="h-6 bg-gray-200 rounded"></div>
+                        <div className="h-6 bg-gray-200 rounded"></div>
+                        <div className="h-6 bg-gray-200 rounded"></div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Details */}
+                  <div className="p-4 bg-gray-50">
+                    <h3 className="font-bold text-gray-800 mb-2">Professional Corporate</h3>
+                    <button className="w-full bg-gray-700 hover:bg-gray-800 text-white py-2 rounded font-semibold text-sm transition-colors">
+                      Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Template 2: Gaming Victory */}
+              <div 
+                onClick={() => downloadPointsTableTemplate(2)}
+                className="cursor-pointer group"
+              >
+                <div className="bg-gradient-to-br from-blue-950 to-blue-900 rounded-lg overflow-hidden border-2 border-cyan-400 hover:border-cyan-300 transition-all duration-300 hover:shadow-xl hover:shadow-cyan-500/30 hover:scale-105">
+                  {/* Preview */}
+                  <div className="aspect-video bg-blue-900 bg-opacity-50 p-4 flex flex-col justify-center items-center border-b border-cyan-400">
+                    <div className="text-center w-full">
+                      <h3 className="text-cyan-400 font-bold text-lg mb-1"> Tournament Name</h3>
+                      <div className="w-full h-1 bg-cyan-400 mb-3"></div>
+                      <div className="grid grid-cols-4 gap-1 w-full">
+                        <div className="h-6 bg-cyan-400/30 rounded"></div>
+                        <div className="h-6 bg-cyan-400/30 rounded"></div>
+                        <div className="h-6 bg-cyan-400/30 rounded"></div>
+                        <div className="h-6 bg-cyan-400/30 rounded"></div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Details */}
+                  <div className="p-4 bg-blue-950">
+                    <h3 className="font-bold text-cyan-400 mb-2">Gaming Victory</h3>
+                    <button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-2 rounded font-semibold text-sm transition-colors">
+                      Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Template 3: Esports Championship */}
+              <div 
+                onClick={() => downloadPointsTableTemplate(3)}
+                className="cursor-pointer group"
+              >
+                <div className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg overflow-hidden border-2 border-orange-500 hover:border-orange-400 transition-all duration-300 hover:shadow-xl hover:shadow-orange-500/30 hover:scale-105">
+                  {/* Preview */}
+                  <div className="aspect-video bg-gray-800 p-4 flex flex-col justify-center items-center border-b border-orange-500">
+                    <div className="text-center w-full">
+                      <h3 className="text-orange-500 font-black text-lg mb-1"> TOURNAMENT NAME</h3>
+                      <div className="w-full h-1 bg-orange-500 mb-3"></div>
+                      <div className="grid grid-cols-4 gap-1 w-full">
+                        <div className="h-6 bg-orange-500/30 rounded"></div>
+                        <div className="h-6 bg-orange-500/30 rounded"></div>
+                        <div className="h-6 bg-orange-500/30 rounded"></div>
+                        <div className="h-6 bg-orange-500/30 rounded"></div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Details */}
+                  <div className="p-4 bg-gray-900">
+                    <h3 className="font-bold text-orange-500 mb-2">Esports Championship</h3>
+                    <button className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded font-semibold text-sm transition-colors">
+                      Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Template 4: Elite Tournament */}
+              <div 
+                onClick={() => downloadPointsTableTemplate(4)}
+                className="cursor-pointer group"
+              >
+                <div className="bg-gradient-to-br from-black to-gray-900 rounded-lg overflow-hidden border-2 border-yellow-600 hover:border-yellow-400 transition-all duration-300 hover:shadow-xl hover:shadow-yellow-500/30 hover:scale-105">
+                  {/* Preview */}
+                  <div className="aspect-video bg-black p-4 flex flex-col justify-center items-center border-b border-yellow-600">
+                    <div className="text-center w-full">
+                      <h3 className="text-yellow-600 font-black italic text-lg mb-1"> TOURNAMENT NAME</h3>
+                      <div className="w-full h-1 bg-yellow-600 mb-3"></div>
+                      <div className="grid grid-cols-4 gap-1 w-full">
+                        <div className="h-6 bg-yellow-600/30 rounded"></div>
+                        <div className="h-6 bg-yellow-600/30 rounded"></div>
+                        <div className="h-6 bg-yellow-600/30 rounded"></div>
+                        <div className="h-6 bg-yellow-600/30 rounded"></div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Details */}
+                  <div className="p-4 bg-black">
+                    <h3 className="font-bold text-yellow-600 mb-2">Elite Tournament</h3>
+                    
+                    <button className="w-full bg-yellow-700 hover:bg-yellow-800 text-white py-2 rounded font-semibold text-sm transition-colors">
+                      Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gray-950 border-t border-white/10 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => setShowTemplateModal(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ConfigLayout>
   );
 };

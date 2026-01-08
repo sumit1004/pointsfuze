@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { utils, read } from 'xlsx';
 import ConfigLayout from '../components/layouts/ConfigLayout';
-import { Save, ChevronRight, Trash2, Plus, Edit2, Upload, X } from 'lucide-react';
+import { Save, ChevronRight, Trash2, Plus, Edit2, Upload, X, Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 interface SlotTeam {
   slot: number;
@@ -21,6 +22,8 @@ interface SlotTeamMatch {
   type: 'semifinal' | 'final';
   matchNumber: number;
   slotTeams: SlotTeamMatchResult[];
+  tournamentName?: string;
+  tournamentDate?: string;
 }
 
 const SlotTeamMatch: React.FC = () => {
@@ -37,6 +40,10 @@ const SlotTeamMatch: React.FC = () => {
   const [slotTeams, setSlotTeams] = useState<SlotTeam[]>([]);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [tournamentName, setTournamentName] = useState('');
+  const [tournamentDate, setTournamentDate] = useState('');
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [currentMatchForTemplate, setCurrentMatchForTemplate] = useState<SlotTeamMatch | null>(null);
 
   useEffect(() => {
     const loadSavedData = () => {
@@ -247,6 +254,145 @@ const SlotTeamMatch: React.FC = () => {
     setEditingMatch(null);
   };
 
+  const downloadPointsTableTemplate = async (templateId: number) => {
+    if (!currentMatchForTemplate) return;
+
+    const match = currentMatchForTemplate;
+    const gameConfig = JSON.parse(localStorage.getItem('slotTeamGameConfig') || '{}');
+    const killPoints = gameConfig.killPoints || 5;
+
+    const rows = [...match.slotTeams]
+      .sort((a, b) => b.points - a.points)
+      .map((team, index) => {
+        const killCount = typeof team.kills === 'string' 
+          ? (team.kills === '' ? 0 : parseInt(team.kills) || 0)
+          : (team.kills || 0);
+        const killPointsTotal = killCount * killPoints;
+        const placementPoints = team.position && team.position > 0 ? gameConfig.positionPoints[team.position] || 0 : 0;
+
+        let medalColor = '';
+        if (index === 0) medalColor = '#FFD700';
+        else if (index === 1) medalColor = '#C0C0C0';
+        else if (index === 2) medalColor = '#CD7F32';
+
+        return `
+      <tr style="${index < 3 ? `background-color: rgba(${index === 0 ? '255,215,0' : index === 1 ? '192,192,192' : '205,127,50'}, 0.15);` : ''}">
+        <td style="font-weight: bold; color: ${medalColor || '#000000ff'};">${index < 3 ? ['🥇', '🥈', '🥉'][index] : index + 1}</td>
+        <td style="font-weight: 600;">${team.teamName}</td>
+        <td style="text-align: center;">${team.slot}</td>
+        <td style="text-align: center;">${killCount}</td>
+        <td style="text-align: center; font-weight: 500;">${killPointsTotal}</td>
+        <td style="text-align: center; font-weight: 500;">${placementPoints}</td>
+        <td style="text-align: center; font-weight: bold; font-size: 16px;">${team.points}</td>    
+      </tr>
+    `}).join('');
+
+    const matchType = match.type === 'semifinal' ? 'Semi-Final' : 'Final';
+    const formattedDate = new Date(match.tournamentDate || new Date()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    let htmlContent = '';
+
+    if (templateId === 1) {
+      htmlContent = `
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tournamentName} - ${matchType} ${match.matchNumber}</title><style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body { font-family: 'Segoe UI', 'Arial', sans-serif; background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%); color: #222; padding: 40px 20px; min-height: 100vh; }
+          .container { max-width: 1200px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 60px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+          .header { text-align: center; margin-bottom: 50px; padding-bottom: 30px; border-bottom: 3px solid #1f2937; }
+          .tournament-title { font-size: 48px; font-weight: 800; color: #1f2937; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 2px; }
+          .match-label { font-size: 24px; color: #6b7280; font-weight: 500; margin-bottom: 5px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+          th { background: #1f2937; color: white; padding: 16px; text-align: left; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+          td { padding: 16px; border-bottom: 1px solid #e5e7eb; font-size: 15px; color: #374151; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover { background: #f9fafb; }
+        </style></head><body><div class="container"><div class="header"><div class="tournament-title">${tournamentName}</div><div class="match-label">${matchType} Match ${match.matchNumber}</div></div>
+        <table><thead><tr><th>RANK</th><th>TEAM</th><th>SLOT</th><th>KILLS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL PTS</th></tr></thead><tbody>${rows}</tbody></table></div></body></html>
+      `;
+    } else if (templateId === 2) {
+      htmlContent = `
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tournamentName} - ${matchType} ${match.matchNumber}</title><style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 40px 20px; min-height: 100vh; }
+          .container { max-width: 1200px; margin: 0 auto; background: rgba(22, 33, 62, 0.95); border: 3px solid #00d4ff; border-radius: 8px; padding: 60px; box-shadow: 0 0 40px rgba(0, 212, 255, 0.3), inset 0 0 40px rgba(0, 212, 255, 0.05); }
+          .header { text-align: center; margin-bottom: 50px; padding-bottom: 30px; border-bottom: 2px solid #00d4ff; }
+          .tournament-title { font-size: 52px; font-weight: 900; color: #00d4ff; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 3px; }
+          .match-label { font-size: 18px; color: #00d4ff; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+          th { background: linear-gradient(90deg, #00d4ff, #0099ff); color: #1a1a2e; padding: 16px; text-align: left; font-size: 13px; font-weight: 700; text-transform: uppercase; }
+          td { padding: 16px; border-bottom: 1px solid rgba(0, 212, 255, 0.2); font-size: 15px; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover { background: rgba(0, 212, 255, 0.1); }
+        </style></head><body><div class="container"><div class="header"><div class="tournament-title">${tournamentName}</div><div class="match-label">${matchType} Match ${match.matchNumber}</div></div>
+        <table><thead><tr><th>RANK</th><th>TEAM</th><th>SLOT</th><th>KILLS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead><tbody>${rows}</tbody></table></div></body></html>
+      `;
+    } else if (templateId === 3) {
+      htmlContent = `
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tournamentName} - ${matchType} ${match.matchNumber}</title><style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body { font-family: 'Arial Black', sans-serif; background: linear-gradient(135deg, #0a0e27 0%, #1a1a3e 100%); color: #fff; padding: 40px 20px; min-height: 100vh; }
+          .container { max-width: 1200px; margin: 0 auto; background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 2px solid #f97316; border-radius: 4px; padding: 60px; box-shadow: 0 0 60px rgba(249, 115, 22, 0.4); }
+          .header { text-align: center; margin-bottom: 50px; padding-bottom: 30px; border-bottom: 3px solid #f97316; }
+          .tournament-title { font-size: 56px; font-weight: 900; color: #f97316; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 3px; text-shadow: 0 0 20px rgba(249, 115, 22, 0.5); }
+          .match-label { font-size: 18px; color: #fbbf24; font-weight: 600; }
+          table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+          th { background: #f97316; color: white; padding: 18px; text-align: left; font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
+          td { padding: 16px 18px; border-bottom: 1px solid #374151; font-size: 15px; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover { background: rgba(249, 115, 22, 0.1); }
+        </style></head><body><div class="container"><div class="header"><div class="tournament-title">${tournamentName}</div><div class="match-label">${matchType} Match ${match.matchNumber}</div></div>
+        <table><thead><tr><th>RANK</th><th>TEAM</th><th>SLOT</th><th>KILLS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead><tbody>${rows}</tbody></table></div></body></html>
+      `;
+    } else if (templateId === 4) {
+      htmlContent = `
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tournamentName} - ${matchType} ${match.matchNumber}</title><style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body { font-family: 'Georgia', serif; background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%); color: #fff; padding: 40px 20px; min-height: 100vh; }
+          .container { max-width: 1200px; margin: 0 auto; background: #1f1f1f; border: 3px solid #d4af37; border-radius: 0px; padding: 60px; box-shadow: 0 0 50px rgba(212, 175, 55, 0.3), inset 0 0 30px rgba(212, 175, 55, 0.05); }
+          .header { text-align: center; margin-bottom: 50px; padding-bottom: 40px; border-bottom: 3px solid #d4af37; }
+          .tournament-title { font-size: 54px; font-weight: 900; color: #d4af37; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 4px; font-style: italic; }
+          .match-label { font-size: 18px; color: #d4af37; font-weight: 500; letter-spacing: 1px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 35px; }
+          th { background: #d4af37; color: #1f1f1f; padding: 18px; text-align: left; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+          td { padding: 16px 18px; border-bottom: 2px solid #333; font-size: 15px; }
+          tr:last-child td { border-bottom: none; }
+          tr:hover { background: rgba(212, 175, 55, 0.08); }
+        </style></head><body><div class="container"><div class="header"><div class="tournament-title">${tournamentName}</div><div class="match-label">${matchType} Match ${match.matchNumber}</div></div>
+        <table><thead><tr><th>RANK</th><th>TEAM</th><th>SLOT</th><th>KILLS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead><tbody>${rows}</tbody></table></div></body></html>
+      `;
+    }
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    tempDiv.style.position = 'fixed';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.top = '-9999px';
+    document.body.appendChild(tempDiv);
+
+    try {
+      const canvas = await html2canvas(tempDiv, {
+        backgroundColor: '#fff',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      });
+
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      const fileName = `${tournamentName}-${matchType}-${match.matchNumber}-${new Date().toISOString().split('T')[0]}.png`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error generating image:', error);
+      alert('Failed to generate template image');
+    } finally {
+      document.body.removeChild(tempDiv);
+      setShowTemplateModal(false);
+    }
+  };
+
   const createMatch = () => {
     if (slotTeams.length === 0) {
       alert('Please add slot and team names first');
@@ -267,7 +413,9 @@ const SlotTeamMatch: React.FC = () => {
         kills: '',
         position: '',
         points: 0
-      }))
+      })),
+      tournamentName: tournamentName || '',
+      tournamentDate: tournamentDate || ''
     };
 
     setMatches(prev => {
@@ -279,6 +427,8 @@ const SlotTeamMatch: React.FC = () => {
     // Clear inputs and close modal
     setNewMatchNumber('');
     setNewMatchType('final');
+    setTournamentName('');
+    setTournamentDate('');
     setShowModal(false);
     // Keep slotTeams for next match
   };
@@ -478,6 +628,27 @@ const SlotTeamMatch: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Match Result Download Buttons */}
+                  <div className="mt-4 flex gap-2 flex-col sm:flex-row">
+                    <button
+                      onClick={() => handleSaveAndViewResults()}
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-4 py-2 rounded-md text-sm flex items-center justify-center"
+                    >
+                      <Download size={16} className="mr-2" />
+                      Excel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentMatchForTemplate(match);
+                        setShowTemplateModal(true);
+                      }}
+                      className="flex-1 bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 text-white px-4 py-2 rounded-md text-sm flex items-center justify-center"
+                    >
+                      <Download size={16} className="mr-2" />
+                      Template
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -601,6 +772,26 @@ const SlotTeamMatch: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Tournament Details */}
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">Step 3: Tournament Details</label>
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={tournamentName}
+                      onChange={(e) => setTournamentName(e.target.value)}
+                      placeholder="Tournament Name (e.g., BGMI Championship)"
+                      className="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 focus:outline-none focus:border-purple-500"
+                    />
+                    <input
+                      type="date"
+                      value={tournamentDate}
+                      onChange={(e) => setTournamentDate(e.target.value)}
+                      className="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-4">
                   <button
@@ -608,6 +799,8 @@ const SlotTeamMatch: React.FC = () => {
                       setShowModal(false);
                       setNewMatchNumber('');
                       setNewMatchType('final');
+                      setTournamentName('');
+                      setTournamentDate('');
                     }}
                     className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md"
                   >
@@ -644,6 +837,259 @@ const SlotTeamMatch: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Template Selection Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-white/20">
+            {/* Sticky Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-cyan-600/80 to-blue-600/80 backdrop-blur-md px-6 py-4 border-b border-white/20">
+              <h3 className="text-xl sm:text-2xl font-bold text-white">Select Template</h3>
+            </div>
+
+            {/* Template Grid */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Template 1: Professional Corporate */}
+                <button
+                  onClick={() => downloadPointsTableTemplate(1)}
+                  className="group relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 shadow-lg hover:shadow-2xl h-64"
+                >
+                  <div className="w-full h-full bg-white p-4 flex flex-col justify-between">
+                    <div>
+                      <div className="bg-gray-800 text-gray-900 text-xs font-bold py-2 px-3 mb-2 text-center">TOURNAMENT RESULTS</div>
+                      <div className="text-gray-600 text-xs font-semibold mb-2 text-center">Match Results</div>
+                    </div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-800">
+                          <th className="border border-gray-300 px-1 py-1 text-white text-left">Rank</th>
+                          <th className="border border-gray-300 px-1 py-1 text-white text-left">Team</th>
+                          <th className="border border-gray-300 px-1 py-1 text-white text-right">Points</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-gray-300 px-1 py-1">🥇</td>
+                          <td className="border border-gray-300 px-1 py-1">Team A</td>
+                          <td className="border border-gray-300 px-1 py-1 text-right font-bold">250</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-1 py-1">🥈</td>
+                          <td className="border border-gray-300 px-1 py-1">Team B</td>
+                          <td className="border border-gray-300 px-1 py-1 text-right font-bold">180</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-gray-300 px-1 py-1">🥉</td>
+                          <td className="border border-gray-300 px-1 py-1">Team C</td>
+                          <td className="border border-gray-300 px-1 py-1 text-right font-bold">120</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2 text-white text-sm font-semibold text-center group-hover:from-black/70 transition-all">
+                    Professional Corporate
+                  </div>
+                </button>
+
+                {/* Template 2: Gaming Victory */}
+                <button
+                  onClick={() => downloadPointsTableTemplate(2)}
+                  className="group relative bg-blue-900 rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 shadow-lg hover:shadow-2xl h-64"
+                  style={{ borderColor: '#00d4ff', borderWidth: '2px' }}
+                >
+                  <div className="w-full h-full bg-gradient-to-b from-blue-950 to-blue-900 p-4 flex flex-col justify-between">
+                    <div>
+                      <div
+                        className="text-white text-xs font-bold py-2 px-3 mb-2 text-center"
+                        style={{ background: 'linear-gradient(90deg, #00d4ff, #0099ff)', color: '#1a1a2e' }}
+                      >
+                        GAMING VICTORY
+                      </div>
+                      <div style={{ color: '#00d4ff' }} className="text-xs font-semibold mb-2 text-center">
+                        MATCH RANKINGS
+                      </div>
+                    </div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr style={{ background: 'linear-gradient(90deg, #00d4ff, #0099ff)' }}>
+                          <th className="px-1 py-1 text-blue-900 text-left font-bold">R</th>
+                          <th className="px-1 py-1 text-blue-900 text-left font-bold">TEAM</th>
+                          <th className="px-1 py-1 text-blue-900 text-right font-bold">PTS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ backgroundColor: 'rgba(0, 212, 255, 0.1)' }}>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 font-bold">
+                            🥇
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1">
+                            Team A
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 text-right font-bold">
+                            250
+                          </td>
+                        </tr>
+                        <tr style={{ backgroundColor: 'rgba(0, 212, 255, 0.1)' }}>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 font-bold">
+                            🥈
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1">
+                            Team B
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 text-right font-bold">
+                            180
+                          </td>
+                        </tr>
+                        <tr style={{ backgroundColor: 'rgba(0, 212, 255, 0.1)' }}>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 font-bold">
+                            🥉
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1">
+                            Team C
+                          </td>
+                          <td style={{ color: '#00d4ff' }} className="px-1 py-1 text-right font-bold">
+                            120
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2 text-cyan-400 text-sm font-semibold text-center group-hover:from-black/70 transition-all">
+                    Gaming Victory - Cyan
+                  </div>
+                </button>
+
+                {/* Template 3: Esports Championship */}
+                <button
+                  onClick={() => downloadPointsTableTemplate(3)}
+                  className="group relative bg-gray-800 rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 shadow-lg hover:shadow-2xl h-64"
+                  style={{ borderColor: '#f97316', borderWidth: '2px' }}
+                >
+                  <div className="w-full h-full bg-gray-800 p-4 flex flex-col justify-between">
+                    <div>
+                      <div className="bg-orange-500 text-white text-xs font-bold py-2 px-3 mb-2 text-center">ESPORTS CHAMPIONSHIP</div>
+                      <div className="text-yellow-400 text-xs font-bold mb-2 text-center uppercase">FINAL STANDINGS</div>
+                    </div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-orange-500">
+                          <th className="px-1 py-1 text-white text-left font-bold">RANK</th>
+                          <th className="px-1 py-1 text-white text-left font-bold">TEAM</th>
+                          <th className="px-1 py-1 text-white text-right font-bold">POINTS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)' }}>
+                          <td className="px-1 py-1 text-white font-bold">🥇</td>
+                          <td className="px-1 py-1 text-white font-bold">Team A</td>
+                          <td className="px-1 py-1 text-right text-orange-400 font-bold">250</td>
+                        </tr>
+                        <tr style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)' }}>
+                          <td className="px-1 py-1 text-white font-bold">🥈</td>
+                          <td className="px-1 py-1 text-white font-bold">Team B</td>
+                          <td className="px-1 py-1 text-right text-orange-400 font-bold">180</td>
+                        </tr>
+                        <tr style={{ backgroundColor: 'rgba(249, 115, 22, 0.15)' }}>
+                          <td className="px-1 py-1 text-white font-bold">🥉</td>
+                          <td className="px-1 py-1 text-white font-bold">Team C</td>
+                          <td className="px-1 py-1 text-right text-orange-400 font-bold">120</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2 text-orange-400 text-sm font-semibold text-center group-hover:from-black/70 transition-all">
+                    Esports Championship - Orange
+                  </div>
+                </button>
+
+                {/* Template 4: Elite Tournament */}
+                <button
+                  onClick={() => downloadPointsTableTemplate(4)}
+                  className="group relative bg-black rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 shadow-lg hover:shadow-2xl h-64"
+                  style={{ borderColor: '#d4af37', borderWidth: '2px' }}
+                >
+                  <div className="w-full h-full bg-black p-4 flex flex-col justify-between">
+                    <div>
+                      <div style={{ borderBottomColor: '#d4af37', borderBottomWidth: '2px' }} className="pb-2 mb-2">
+                        <div style={{ color: '#d4af37' }} className="text-xs font-bold italic text-center">
+                          ELITE TOURNAMENT
+                        </div>
+                      </div>
+                      <div style={{ color: '#d4af37' }} className="text-xs font-semibold mb-2 text-center italic">
+                        PREMIUM RESULTS
+                      </div>
+                    </div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr style={{ backgroundColor: '#d4af37' }}>
+                          <th style={{ color: '#1f1f1f' }} className="px-1 py-1 text-left font-bold">
+                            Rank
+                          </th>
+                          <th style={{ color: '#1f1f1f' }} className="px-1 py-1 text-left font-bold">
+                            Team
+                          </th>
+                          <th style={{ color: '#1f1f1f' }} className="px-1 py-1 text-right font-bold">
+                            Score
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottomColor: '#333', borderBottomWidth: '2px' }}>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 font-bold">
+                            🥇
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1">
+                            Team A
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 text-right font-bold">
+                            250
+                          </td>
+                        </tr>
+                        <tr style={{ borderBottomColor: '#333', borderBottomWidth: '2px' }}>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 font-bold">
+                            🥈
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1">
+                            Team B
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 text-right font-bold">
+                            180
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 font-bold">
+                            🥉
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1">
+                            Team C
+                          </td>
+                          <td style={{ color: '#d4af37' }} className="px-1 py-1 text-right font-bold">
+                            120
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2 text-yellow-600 text-sm font-semibold text-center group-hover:from-black/70 transition-all">
+                    Elite Tournament - Gold
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Sticky Footer */}
+            <div className="sticky bottom-0 bg-gray-800 border-t border-white/20 px-6 py-3 flex justify-end">
+              <button
+                onClick={() => setShowTemplateModal(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ConfigLayout>
   );
 };
