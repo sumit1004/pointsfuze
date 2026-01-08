@@ -348,7 +348,6 @@ const MatchCalculator: React.FC = () => {
     `}).join('');
 
     const matchType = match.type === 'semifinal' ? 'Semi-Final' : 'Final';
-    const formattedDate = new Date(match.tournamentDate || new Date()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let htmlContent = '';
 
     if (templateId === 1) {
@@ -452,6 +451,8 @@ const MatchCalculator: React.FC = () => {
       setShowTemplateModal(false);
     }
   };
+
+  const downloadAllResults = () => {
     try {
       const workbook = utils.book_new();
       
