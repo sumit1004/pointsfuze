@@ -4,6 +4,8 @@ import ConfigLayout from '../components/layouts/ConfigLayout';
 import { Download, ArrowLeft, Trophy } from 'lucide-react';
 import { utils, writeFile } from 'xlsx';
 import html2canvas from 'html2canvas';
+import { useAuth } from '../context/AuthContext';
+import { saveHistoryToDb, saveTournamentToDb, incrementDownloadStat } from '../lib/db';
 
 interface Player {
   name: string;
@@ -44,6 +46,7 @@ const FinalResult: React.FC = () => {
   const [tournamentName, setTournamentName] = useState('');
   const [tournamentDate, setTournamentDate] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const { user } = useAuth();
 
   const getOverallMVP = (matches: Match[]) => {
     interface PlayerTotal {
@@ -222,6 +225,10 @@ const FinalResult: React.FC = () => {
     // Get tournament name from state or use default
     const finalTournamentName = tournamentName || 'Tournament';
     writeFile(workbook, `${finalTournamentName}_Complete_Results.xlsx`);
+
+    if (user) {
+      incrementDownloadStat(user.uid, false);
+    }
   };
 
   const handleSaveToHistory = () => {
@@ -240,10 +247,29 @@ const FinalResult: React.FC = () => {
       historyData.push(tournamentData);
       localStorage.setItem('tournamentHistory', JSON.stringify(historyData));
 
+      if (user) {
+        saveTournamentToDb(user.uid, {
+          name: tournamentData.name,
+          date: tournamentData.date,
+          mode: 'Excel/Screenshot',
+          status: 'completed'
+        });
+
+        saveHistoryToDb(user.uid, {
+          tournamentName: tournamentData.name,
+          date: tournamentData.date,
+          mode: 'Excel/Screenshot',
+          totalMatches: finals.length + semifinals.length,
+          winner: finalResults[0]?.teamName || '',
+          pointsTable: finalResults
+        });
+      }
+
       // Clear current match data after saving
       localStorage.removeItem('matchResults');
 
       alert('Tournament results saved to history!');
+      navigate('/dashboard');
     } catch (error) {
       console.error('Error saving to history:', error);
       alert('Failed to save tournament to history');
@@ -751,6 +777,10 @@ const FinalResult: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      if (user) {
+        incrementDownloadStat(user.uid, true);
+      }
     } catch (error) {
       console.error('Error generating image:', error);
       alert('Failed to generate template image');
@@ -893,14 +923,7 @@ const FinalResult: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="fixed bottom-0 left-0 right-0 sm:relative sm:mt-6 bg-gray-900/80 backdrop-blur-md sm:bg-transparent sm:backdrop-blur-none border-t border-white/10 sm:border-0 z-10">
-          <div className="flex flex-col sm:flex-row justify-between gap-3 p-4 sm:p-0">
-            <button
-              onClick={() => navigate('/match-calculator')}
-              className="flex items-center justify-center bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-md w-full sm:w-auto"
-            >
-              <ArrowLeft size={18} className="mr-2" />
-              Back to Calculator
-            </button>
+          <div className="flex flex-col sm:flex-row justify-end gap-3 p-4 sm:p-0">
             <div className="flex gap-3 sm:gap-4">
               <button
                 onClick={() => setShowTemplateModal(true)}

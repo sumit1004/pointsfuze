@@ -157,13 +157,7 @@ const AllGamesConfig: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex justify-between">
-        <button
-          onClick={() => navigate('/games')}
-          className="backdrop-blur-md bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-md transition-colors"
-        >
-          Back
-        </button>
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
           className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white px-6 py-3 rounded-md flex items-center transition-all hover:shadow-lg"

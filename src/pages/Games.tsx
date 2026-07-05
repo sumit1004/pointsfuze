@@ -1,46 +1,28 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Gamepad as GameplaySolid, Trophy, Users, Zap, History } from 'lucide-react';
+import ConfigLayout from '../components/layouts/ConfigLayout';
 import '../styles/typing.css';
 
 const Games: React.FC = () => {
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Clear all previous tournament progress to start a fresh one
+    localStorage.removeItem('globalGameConfig');
+    localStorage.removeItem('matchResults');
+    localStorage.removeItem('finalResults');
+    localStorage.removeItem('slotTeamGameConfig');
+    localStorage.removeItem('slotTeamMatchResults');
+    localStorage.removeItem('totalScoreTournamentDetails');
+    localStorage.removeItem('totalScoreTeams');
+    localStorage.removeItem('totalScoreMatches');
+  }, []);
+
   return (
-    <div className="min-h-screen relative text-gray-100 p-6">
-      <div
-        className="fixed inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: 'url("/background.jpg")',
-          zIndex: -1
-        }}
-      />
-      <div className="fixed inset-0 bg-black/70" style={{ zIndex: -1 }} />
-      <div className="relative max-w-[95%] mx-auto px-4">
-        <div className="flex flex-col items-center justify-center mb-8">
-          <div className="backdrop-blur-md bg-white/10 p-6 rounded-2xl shadow-xl border border-white/20 mb-4 transform hover:scale-105 transition-all duration-300">
-            <img
-              src="/logos.png"
-              alt="Infinity Esports Logo"
-              className="w-50 h-28 animate-pulse drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]"
-            />
-          </div>
-          <div className="flex items-center justify-center">
-            <Zap className="h-10 w-10 text-purple-500 mr-3 animate-bounce" />
-            <h1 className="text-4xl md:text-5xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-cyan-400 animate-pulse hover:scale-105 transition-transform duration-300">
-              PointFuze
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center justify-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-cyan-400 mb-12 typing-text w-fit">
-            Where Every Point Matters<span className="dots-animation"></span>
-          </h2>
-        </div>
-
-        <div className="flex justify-center">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center place-items-center">
+    <ConfigLayout title="Select Tournament Mode">
+      <div className="flex justify-center mt-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center place-items-center">
             <button
               onClick={() => navigate('/all-games-config')}
               className="backdrop-blur-md bg-white/10 border border-white/20 rounded-lg p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 animate-fadeIn w-[200px]"
@@ -100,6 +82,31 @@ const Games: React.FC = () => {
             </button>
 
             <button
+              onClick={() => navigate('/total-score')}
+              className="backdrop-blur-md bg-white/10 border border-white/20 rounded-lg p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 animate-fadeIn w-[200px]"
+              style={{
+                animationDelay: `1100ms`,
+                animationFillMode: 'backwards'
+              }}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="w-20 h-16 rounded-lg mb-3 flex items-center justify-center bg-gradient-to-r from-emerald-400 to-teal-500">
+                  <Trophy className="h-8 w-8 text-white" />
+                </div>
+                <div className="w-12 h-12 flex items-center justify-center bg-black bg-opacity-30 rounded-full mb-3">
+                  <Zap className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="text-lg font-bold mb-2">Total Score</h3>
+                <div className="flex space-x-2 text-xs opacity-80">
+                  <span className="flex items-center">
+                    <Trophy className="h-4 w-4 mr-1" />
+                    Direct Score
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            <button
               onClick={() => navigate('/tournament-history')}
               className="backdrop-blur-md bg-white/10 border border-white/20 rounded-lg p-4 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 animate-fadeIn w-[200px]"
               style={{
@@ -126,9 +133,10 @@ const Games: React.FC = () => {
                   </span>
                 </div>
               </div>
-            </button>          </div>        </div>
-      </div>
-    </div>
+            </button>
+          </div>
+        </div>
+    </ConfigLayout>
   );
 };
 

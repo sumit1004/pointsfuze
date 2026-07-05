@@ -4,6 +4,8 @@ import { utils, writeFile, read } from 'xlsx';
 import ConfigLayout from '../components/layouts/ConfigLayout';
 import { Save, ChevronRight, Download, Trash2, Plus, Edit2, Upload, X, Trophy } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { useAuth } from '../context/AuthContext';
+import { saveTournamentToDb, updateTournamentInDb } from '../lib/db';
 
 interface Player {
   name: string;
@@ -53,6 +55,37 @@ const MatchCalculator: React.FC = () => {
   const [tournamentDate, setTournamentDate] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [currentMatchForTemplate, setCurrentMatchForTemplate] = useState<Match | null>(null);
+  const { user } = useAuth();
+
+  const saveToLocalAndDb = async (newMatches: Match[], newName: string = tournamentName, newDate: string = tournamentDate) => {
+    localStorage.setItem('matchResults', JSON.stringify(newMatches));
+    
+    if (user) {
+      let activeId = localStorage.getItem('currentActiveTournamentId');
+      
+      if (!activeId && newMatches.length > 0) {
+        activeId = await saveTournamentToDb(user.uid, {
+          name: newName || newMatches[0]?.tournamentName || 'Unnamed Tournament',
+          date: newDate || newMatches[0]?.tournamentDate || new Date().toISOString().split('T')[0],
+          type: 'Regular',
+          mode: 'Excel/Screenshot',
+          status: 'active'
+        });
+        if (activeId) {
+          localStorage.setItem('currentActiveTournamentId', activeId);
+        }
+      }
+
+      if (activeId) {
+        updateTournamentInDb(user.uid, activeId, {
+          name: newName || newMatches[0]?.tournamentName || 'Unnamed Tournament',
+          date: newDate || newMatches[0]?.tournamentDate || new Date().toISOString().split('T')[0],
+          teamsCount: newMatches[0]?.teams?.length || 0,
+          matches: newMatches
+        }).catch(err => console.error(err));
+      }
+    }
+  };
 
   useEffect(() => {
     const loadSavedData = () => {
@@ -147,7 +180,7 @@ const MatchCalculator: React.FC = () => {
       match.teams[teamIndex] = team;
       newMatches[matchIndex] = match;
       
-      localStorage.setItem('matchResults', JSON.stringify(newMatches));
+      saveToLocalAndDb(newMatches);
       return newMatches;
     });
   };
@@ -164,7 +197,7 @@ const MatchCalculator: React.FC = () => {
       match.teams[teamIndex] = team;
       newMatches[matchIndex] = match;
       
-      localStorage.setItem('matchResults', JSON.stringify(newMatches));
+      saveToLocalAndDb(newMatches);
       return newMatches;
     });
   };
@@ -178,7 +211,7 @@ const MatchCalculator: React.FC = () => {
       }))
     }));
     
-    localStorage.setItem('matchResults', JSON.stringify(finalMatches));
+    saveToLocalAndDb(finalMatches);
     setMatches(finalMatches);
     navigate('/final-result');
   };
@@ -187,7 +220,7 @@ const MatchCalculator: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this match?')) {
       setMatches(prevMatches => {
         const newMatches = prevMatches.filter((_, index) => index !== matchIndex);
-        localStorage.setItem('matchResults', JSON.stringify(newMatches));
+        saveToLocalAndDb(newMatches);
         return newMatches;
       });
     }
@@ -573,7 +606,7 @@ const MatchCalculator: React.FC = () => {
 
     setMatches(prev => {
       const newMatches = [...prev, newMatch];
-      localStorage.setItem('matchResults', JSON.stringify(newMatches));
+      saveToLocalAndDb(newMatches, tournamentName, tournamentDate);
       return newMatches;
     });
 

@@ -4,6 +4,8 @@ import { utils, read } from 'xlsx';
 import ConfigLayout from '../components/layouts/ConfigLayout';
 import { Save, ChevronRight, Trash2, Plus, Edit2, Upload, X, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { useAuth } from '../context/AuthContext';
+import { saveTournamentToDb, updateTournamentInDb } from '../lib/db';
 
 interface SlotTeam {
   slot: number;
@@ -44,6 +46,37 @@ const SlotTeamMatch: React.FC = () => {
   const [tournamentDate, setTournamentDate] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [currentMatchForTemplate, setCurrentMatchForTemplate] = useState<SlotTeamMatch | null>(null);
+  const { user } = useAuth();
+
+  const saveToLocalAndDb = async (newMatches: SlotTeamMatch[], newName: string = tournamentName, newDate: string = tournamentDate) => {
+    localStorage.setItem('slotTeamMatchResults', JSON.stringify(newMatches));
+    
+    if (user) {
+      let activeId = localStorage.getItem('currentActiveTournamentId');
+      
+      if (!activeId && newMatches.length > 0) {
+        activeId = await saveTournamentToDb(user.uid, {
+          name: newName || newMatches[0]?.tournamentName || 'Unnamed Tournament',
+          date: newDate || newMatches[0]?.tournamentDate || new Date().toISOString().split('T')[0],
+          type: 'SlotTeam',
+          mode: 'Slots & Teams',
+          status: 'active'
+        });
+        if (activeId) {
+          localStorage.setItem('currentActiveTournamentId', activeId);
+        }
+      }
+
+      if (activeId) {
+        updateTournamentInDb(user.uid, activeId, {
+          name: newName || newMatches[0]?.tournamentName || 'Unnamed Tournament',
+          date: newDate || newMatches[0]?.tournamentDate || new Date().toISOString().split('T')[0],
+          teamsCount: newMatches[0]?.slotTeams?.length || 0,
+          matches: newMatches
+        }).catch(err => console.error(err));
+      }
+    }
+  };
 
   useEffect(() => {
     const loadSavedData = () => {
@@ -420,7 +453,7 @@ const SlotTeamMatch: React.FC = () => {
 
     setMatches(prev => {
       const newMatches = [...prev, newMatch];
-      localStorage.setItem('slotTeamMatchResults', JSON.stringify(newMatches));
+      saveToLocalAndDb(newMatches, tournamentName, tournamentDate);
       return newMatches;
     });
 
@@ -437,14 +470,14 @@ const SlotTeamMatch: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this match?')) {
       setMatches(prevMatches => {
         const newMatches = prevMatches.filter((_, index) => index !== matchIndex);
-        localStorage.setItem('slotTeamMatchResults', JSON.stringify(newMatches));
+        saveToLocalAndDb(newMatches);
         return newMatches;
       });
     }
   };
 
   const handleSaveAndViewResults = () => {
-    localStorage.setItem('slotTeamMatchResults', JSON.stringify(matches));
+    saveToLocalAndDb(matches);
     navigate('/slot-team-final-result');
   };
 
@@ -562,6 +595,7 @@ const SlotTeamMatch: React.FC = () => {
                                     gameConfig
                                   );
                                   setMatches(newMatches);
+                                  saveToLocalAndDb(newMatches);
                                 }}
                                 className="w-20 bg-white/5 text-white text-center p-2 rounded border border-white/10 focus:outline-none focus:border-purple-500"
                                 min="0"
@@ -580,6 +614,7 @@ const SlotTeamMatch: React.FC = () => {
                                     gameConfig
                                   );
                                   setMatches(newMatches);
+                                  saveToLocalAndDb(newMatches);
                                 }}
                                 className="w-20 bg-white/5 text-white text-center p-2 rounded border border-white/10 focus:outline-none focus:border-purple-500"
                                 min="0"

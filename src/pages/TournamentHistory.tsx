@@ -2,80 +2,115 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, Eye } from 'lucide-react';
 import ConfigLayout from '../components/layouts/ConfigLayout';
+import { useAuth } from '../context/AuthContext';
+import { ref, get, remove } from 'firebase/database';
+import { db } from '../lib/firebase';
 
 interface TeamStanding {
   teamName: string;
   slot?: number;
   matchesPlayed?: number;
   matches?: number;
-  boyaahCount: number;
-  totalKills: number;
-  totalPositionPoints: number;
-  totalPoints: number;
+  boyaahCount?: number;
+  totalKills?: number;
+  totalPositionPoints?: number;
+  totalPoints?: number;
+  total?: number; // Used in Total Score Mode
 }
 
 interface HistoryEntry {
-  id: number;
+  id: string; // Firebase IDs are strings
   date: string;
-  name?: string;
-  type?: 'regular' | 'slotteam';
-  standings: TeamStanding[];
+  tournamentName?: string; // Standardized for Firebase
+  name?: string; // Legacy
+  mode?: string; // Mode identifier (e.g. 'Total Score', 'Excel/Screenshot')
+  type?: 'regular' | 'slotteam' | 'totalscore';
+  pointsTable?: TeamStanding[]; // New standard
+  standings?: TeamStanding[]; // Legacy
   matches?: any[];
+  totalMatches?: number; // Total Score Mode saves totalMatches directly
+  createdTime?: number;
 }
 
 const TournamentHistory: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [allHistory, setAllHistory] = useState<HistoryEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'regular' | 'slotteam'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'regular' | 'slotteam' | 'totalscore'>('all');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [user]);
 
-  const loadHistory = () => {
-    const regularHistory = JSON.parse(localStorage.getItem('tournamentHistory') || '[]');
-    const slotTeamHistory = JSON.parse(localStorage.getItem('slotTeamHistory') || '[]');
+  const loadHistory = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
-    // Combine both histories
-    const combined = [
-      ...regularHistory.map((entry: any) => ({
-        ...entry,
-        type: 'regular' as const
-      })),
-      ...slotTeamHistory.map((entry: any) => ({
-        ...entry,
-        type: 'slotteam' as const
-      }))
-    ];
-    
-    // Sort by date descending (newest first)
-    const sorted = combined.sort((a: HistoryEntry, b: HistoryEntry) => b.id - a.id);
-    setAllHistory(sorted);
-  };
-
-  const deleteEntry = (id: number, type: 'regular' | 'slotteam' | undefined) => {
-    if (window.confirm('Are you sure you want to delete this tournament record?')) {
-      if (type === 'slotteam') {
-        const slotHistory = JSON.parse(localStorage.getItem('slotTeamHistory') || '[]');
-        const updated = slotHistory.filter((entry: HistoryEntry) => entry.id !== id);
-        localStorage.setItem('slotTeamHistory', JSON.stringify(updated));
+    try {
+      const historyRef = ref(db, `users/${user.uid}/history`);
+      const snapshot = await get(historyRef);
+      
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const historyArray: HistoryEntry[] = Object.keys(data).map(key => {
+          const entry = data[key];
+          
+          // Determine type based on mode or legacy properties
+          let derivedType: 'regular' | 'slotteam' | 'totalscore' = 'regular';
+          if (entry.mode === 'Total Score') derivedType = 'totalscore';
+          else if (entry.mode === 'Slots & Teams' || entry.type === 'slotteam') derivedType = 'slotteam';
+          
+          return {
+            ...entry,
+            id: key,
+            type: derivedType
+          };
+        });
+        
+        // Sort by createdTime descending (newest first)
+        const sorted = historyArray.sort((a, b) => (b.createdTime || 0) - (a.createdTime || 0));
+        setAllHistory(sorted);
       } else {
-        const regHistory = JSON.parse(localStorage.getItem('tournamentHistory') || '[]');
-        const updated = regHistory.filter((entry: HistoryEntry) => entry.id !== id);
-        localStorage.setItem('tournamentHistory', JSON.stringify(updated));
+        setAllHistory([]);
       }
-      loadHistory();
-      setSelectedEntry(null);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const clearAllHistory = () => {
+  const deleteEntry = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this tournament record?')) {
+      if (user) {
+        try {
+          await remove(ref(db, `users/${user.uid}/history/${id}`));
+          loadHistory();
+          setSelectedEntry(null);
+        } catch (error) {
+          console.error('Error deleting record:', error);
+          alert('Failed to delete record.');
+        }
+      }
+    }
+  };
+
+  const clearAllHistory = async () => {
     if (window.confirm('Are you sure you want to delete ALL tournament records? This cannot be undone.')) {
-      localStorage.removeItem('tournamentHistory');
-      localStorage.removeItem('slotTeamHistory');
-      setAllHistory([]);
-      setSelectedEntry(null);
+      if (user) {
+        try {
+          await remove(ref(db, `users/${user.uid}/history`));
+          setAllHistory([]);
+          setSelectedEntry(null);
+        } catch (error) {
+          console.error('Error clearing history:', error);
+          alert('Failed to clear history.');
+        }
+      }
     }
   };
 
@@ -86,19 +121,19 @@ const TournamentHistory: React.FC = () => {
 
   const filteredHistory = getFilteredHistory();
 
+  if (loading) {
+    return (
+      <ConfigLayout title="Tournament History">
+        <div className="flex justify-center items-center h-64 text-white">Loading history...</div>
+      </ConfigLayout>
+    );
+  }
+
   return (
     <ConfigLayout title="Tournament History">
       <div className="space-y-6">
-        {/* Header with Back Button */}
-        <div className="flex items-center justify-between mb-8">
-          <button
-            onClick={() => navigate('/games')}
-            className="backdrop-blur-md bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-md transition-colors flex items-center"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back to Games
-          </button>
-          
+        {/* Header with Clear Button */}
+        <div className="flex items-center justify-end mb-8">
           {allHistory.length > 0 && (
             <button
               onClick={clearAllHistory}
@@ -143,6 +178,16 @@ const TournamentHistory: React.FC = () => {
             >
               Slots & Teams ({allHistory.filter(e => e.type === 'slotteam').length})
             </button>
+            <button
+              onClick={() => setActiveTab('totalscore')}
+              className={`px-4 py-2 rounded-md transition-all ${
+                activeTab === 'totalscore'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
+              }`}
+            >
+              Total Score ({allHistory.filter(e => e.type === 'totalscore').length})
+            </button>
           </div>
         )}
 
@@ -170,25 +215,27 @@ const TournamentHistory: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <p className="text-white font-semibold text-sm">{entry.date}</p>
-                        {entry.name && <p className="text-purple-300 text-xs mt-1 font-semibold">{entry.name}</p>}
+                        {(entry.tournamentName || entry.name) && <p className="text-purple-300 text-xs mt-1 font-semibold">{entry.tournamentName || entry.name}</p>}
                         <p className="text-gray-400 text-xs mt-1">
                           {entry.type === 'slotteam' 
-                            ? `${entry.standings.length} Teams • ${entry.matches?.length || 0} Matches`
-                            : `${entry.standings.length} Teams`}
+                            ? `${(entry.standings || entry.pointsTable || []).length} Teams • ${entry.matches?.length || 0} Matches`
+                            : `${(entry.standings || entry.pointsTable || []).length} Teams`}
                         </p>
                       </div>
                       <span className={`text-xs font-bold px-2 py-1 rounded ${
                         entry.type === 'slotteam'
                           ? 'bg-cyan-500/20 text-cyan-400'
+                          : entry.type === 'totalscore'
+                          ? 'bg-emerald-500/20 text-emerald-400'
                           : 'bg-purple-500/20 text-purple-400'
                       }`}>
-                        {entry.type === 'slotteam' ? 'Slots' : 'Games'}
+                        {entry.type === 'slotteam' ? 'Slots' : entry.type === 'totalscore' ? 'Total Score' : 'Games'}
                       </span>
                     </div>
                     <div className="mt-2">
-                      {entry.standings.length > 0 && (
+                      {((entry.standings && entry.standings.length > 0) || (entry.pointsTable && entry.pointsTable.length > 0)) && (
                         <p className="text-purple-400 font-bold text-sm">
-                          🥇 {entry.standings[0].teamName}
+                          🥇 {entry.standings?.[0]?.teamName || entry.pointsTable?.[0]?.teamName}
                         </p>
                       )}
                     </div>
@@ -220,7 +267,7 @@ const TournamentHistory: React.FC = () => {
                           {selectedEntry.type === 'slotteam' ? 'Slots & Teams' : 'Games'}
                         </span>
                         <button
-                          onClick={() => deleteEntry(selectedEntry.id, selectedEntry.type)}
+                          onClick={() => deleteEntry(selectedEntry.id)}
                           className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-md transition-colors"
                         >
                           <Trash2 size={18} />
@@ -231,23 +278,23 @@ const TournamentHistory: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4 mt-6">
                       <div className="bg-white/5 rounded p-3">
                         <p className="text-gray-400 text-sm">Total Teams</p>
-                        <p className="text-2xl font-bold text-purple-400">{selectedEntry.standings.length}</p>
+                        <p className="text-2xl font-bold text-purple-400">{(selectedEntry.standings || selectedEntry.pointsTable || []).length}</p>
                       </div>
-                      {selectedEntry.matches && (
+                      {(selectedEntry.matches || selectedEntry.totalMatches) && (
                         <div className="bg-white/5 rounded p-3">
                           <p className="text-gray-400 text-sm">Total Matches</p>
-                          <p className="text-2xl font-bold text-purple-400">{selectedEntry.matches.length}</p>
+                          <p className="text-2xl font-bold text-purple-400">{selectedEntry.matches?.length || selectedEntry.totalMatches}</p>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Podium */}
-                  {selectedEntry.standings.length > 0 && (
+                  {(selectedEntry.standings || selectedEntry.pointsTable || []).length > 0 && (
                     <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-lg p-6">
                       <h3 className="text-xl font-bold text-cyan-400 mb-6">🏆 Podium</h3>
                       <div className="space-y-3">
-                        {selectedEntry.standings.slice(0, 3).map((team, idx) => {
+                        {(selectedEntry.standings || selectedEntry.pointsTable || []).slice(0, 3).map((team, idx) => {
                           const medals = ['🥇', '🥈', '🥉'];
                           return (
                             <div key={idx} className="bg-white/5 rounded-lg p-4 flex justify-between items-center">
@@ -259,7 +306,7 @@ const TournamentHistory: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="text-2xl font-bold text-purple-400">{team.totalPoints}</p>
+                                <p className="text-2xl font-bold text-purple-400">{team.totalPoints ?? team.total ?? 0}</p>
                                 <p className="text-gray-400 text-xs">Points</p>
                               </div>
                             </div>
@@ -281,13 +328,17 @@ const TournamentHistory: React.FC = () => {
                             {selectedEntry.type === 'slotteam' && (
                               <th className="px-4 py-3 text-center font-semibold">Matches</th>
                             )}
-                            <th className="px-4 py-3 text-center font-semibold">Boyaah</th>
-                            <th className="px-4 py-3 text-center font-semibold">Kills</th>
+                            {selectedEntry.type !== 'totalscore' && (
+                              <>
+                                <th className="px-4 py-3 text-center font-semibold">Boyaah</th>
+                                <th className="px-4 py-3 text-center font-semibold">Kills</th>
+                              </>
+                            )}
                             <th className="px-4 py-3 text-center font-semibold">Points</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedEntry.standings.map((team, idx) => (
+                          {(selectedEntry.standings || selectedEntry.pointsTable || []).map((team, idx) => (
                             <tr key={idx} className="border-b border-white/10 hover:bg-white/5">
                               <td className="px-4 py-3 font-bold text-purple-400">#{idx + 1}</td>
                               <td className="px-4 py-3 font-semibold text-white">{team.teamName}</td>
@@ -296,11 +347,15 @@ const TournamentHistory: React.FC = () => {
                                   {team.matchesPlayed || team.matches || '—'}
                                 </td>
                               )}
-                              <td className="px-4 py-3 text-center text-yellow-400 font-semibold">
-                                {team.boyaahCount}
-                              </td>
-                              <td className="px-4 py-3 text-center text-cyan-400">{team.totalKills}</td>
-                              <td className="px-4 py-3 text-center font-bold text-purple-400">{team.totalPoints}</td>
+                              {selectedEntry.type !== 'totalscore' && (
+                                <>
+                                  <td className="px-4 py-3 text-center text-yellow-400 font-semibold">
+                                    {team.boyaahCount || 0}
+                                  </td>
+                                  <td className="px-4 py-3 text-center text-cyan-400">{team.totalKills || 0}</td>
+                                </>
+                              )}
+                              <td className="px-4 py-3 text-center font-bold text-purple-400">{team.totalPoints ?? team.total ?? 0}</td>
                             </tr>
                           ))}
                         </tbody>

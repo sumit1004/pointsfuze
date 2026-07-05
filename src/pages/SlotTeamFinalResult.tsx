@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, ArrowLeft, Save } from 'lucide-react';
+import { Download, ArrowLeft, Save, FileSpreadsheet } from 'lucide-react';
 import ConfigLayout from '../components/layouts/ConfigLayout';
 import { utils, writeFile } from 'xlsx';
 import html2canvas from 'html2canvas';
+import { useAuth } from '../context/AuthContext';
+import { saveHistoryToDb, saveTournamentToDb, incrementDownloadStat } from '../lib/db';
 
 interface SlotTeamMatchResult {
   slot: number;
@@ -38,6 +40,7 @@ const SlotTeamFinalResult: React.FC = () => {
   const [tournamentName, setTournamentName] = useState('');
   const [tournamentDate, setTournamentDate] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const loadData = () => {
@@ -136,12 +139,15 @@ const SlotTeamFinalResult: React.FC = () => {
     const workbook = utils.book_new();
     utils.book_append_sheet(workbook, worksheet, 'Standings');
     writeFile(workbook, `slot-team-standings-${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    if (user) {
+      incrementDownloadStat(user.uid, false);
+    }
   };
 
   const downloadPointsTableTemplate = async (templateId: number) => {
     const gameConfig = JSON.parse(localStorage.getItem('slotTeamGameConfig') || '{}');
     const killPoints = gameConfig.killPoints || 5;
-    const date = new Date(tournamentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     
     const rows = standings.map((team, index) => {
       let medalColor = '';
@@ -163,7 +169,6 @@ const SlotTeamFinalResult: React.FC = () => {
     let htmlContent = '';
 
     if (templateId === 1) {
-      // Template 1: Professional Corporate
       htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -172,442 +177,95 @@ const SlotTeamFinalResult: React.FC = () => {
           <title>${tournamentName || 'Tournament'} - Points Table</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body {
-              font-family: 'Segoe UI', 'Arial', sans-serif;
-              background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
-              color: #222;
-              padding: 40px 20px;
-              min-height: 100vh;
-            }
-            .container {
-              max-width: 1200px;
-              margin: 0 auto;
-              background: #ffffff;
-              border-radius: 12px;
-              padding: 60px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 50px;
-              padding-bottom: 30px;
-              border-bottom: 3px solid #1f2937;
-            }
-            .tournament-title {
-              font-size: 48px;
-              font-weight: 800;
-              color: #1f2937;
-              margin-bottom: 15px;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-            }
-            .tournament-date {
-              font-size: 16px;
-              color: #6b7280;
-              font-weight: 500;
-              margin-bottom: 5px;
-            }
-            .badge {
-              display: inline-block;
-   
-              color: black;
-              padding: 8px 16px;
-              border-radius: 20px;
-              font-size: 25px;
-              font-weight: 800;
-              margin-top: 15px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 30px;
-            }
-            th {
-              background: #1f2937;
-              color: white;
-              padding: 16px;
-              text-align: left;
-              font-size: 13px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              border: none;
-            }
-            td {
-              padding: 16px;
-              border-bottom: 1px solid #e5e7eb;
-              font-size: 15px;
-              color: #374151;
-            }
-            tr:last-child td {
-              border-bottom: none;
-            }
-            tr:hover {
-              background: #f9fafb;
-            }
-            @media (max-width: 768px) {
-              .container { padding: 30px 20px; }
-              .tournament-title { font-size: 32px; }
-              th, td { padding: 12px 8px; font-size: 14px; }
-            }
+            html, body { font-family: 'Segoe UI', 'Arial', sans-serif; background: #ffffff; padding: 40px 20px; }
+            .container { max-width: 1200px; margin: 0 auto; background: #ffffff; }
+            .header { text-align: center; margin-bottom: 50px; }
+            .tournament-title { font-size: 48px; font-weight: 800; color: #1f2937; }
+            .badge { font-size: 25px; font-weight: 800; margin-top: 15px; }
+            table { width: 100%; border-collapse: collapse; }
+            th { background: #1f2937; color: white; padding: 16px; text-transform: uppercase; }
+            td { padding: 16px; border-bottom: 1px solid #e5e7eb; }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
               <div class="tournament-title">${tournamentName}</div>
-<div class="badge">Overall STANDINGS</div>
+              <div class="badge">Overall STANDINGS</div>
             </div>
             <table>
-              <thead>
-                <tr>
-                  <th style="width: 70px;">RANK</th>
-                  <th>TEAM</th>
-                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
-                  <th style="width: 100px; text-align: center;">KILL PTS</th>
-                  <th style="width: 100px; text-align: center;">POS PTS</th>
-                  <th style="width: 100px; text-align: center;">TOTAL PTS</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows}
-              </tbody>
+              <thead><tr><th>RANK</th><th>TEAM</th><th>BOYAAHS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL PTS</th></tr></thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         </body>
         </html>
       `;
     } else if (templateId === 2) {
-      // Template 2: Gaming Victory
       htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>${tournamentName || 'Tournament'} - Points Table</title>
           <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body {
-              font-family: 'Arial', sans-serif;
-              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-              color: #fff;
-              padding: 40px 20px;
-              min-height: 100vh;
-            }
-            .container {
-              max-width: 1200px;
-              margin: 0 auto;
-              background: rgba(22, 33, 62, 0.95);
-              border: 3px solid #00d4ff;
-              border-radius: 8px;
-              padding: 60px;
-              box-shadow: 0 0 40px rgba(0, 212, 255, 0.3), inset 0 0 40px rgba(0, 212, 255, 0.05);
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 50px;
-              padding-bottom: 30px;
-              border-bottom: 2px solid #00d4ff;
-            }
-            .tournament-title {
-              font-size: 52px;
-              font-weight: 900;
-              -webkit-background-clip: text;
-              -webkit-text-fill-color: transparent;
-              background-clip: text;
-              margin-bottom: 15px;
-              text-transform: uppercase;
-              letter-spacing: 3px;
-            }
-          
-            .badge {
-              display: inline-block;
-           
-              color: #ffffffff;
-              padding: 10px 20px;
-              border-radius: 4px;
-              font-size: 25px;
-              font-weight: 900;
-              margin-top: 15px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 30px;
-            }
-            th {
-              background: linear-gradient(90deg, #00d4ff, #0099ff);
-              color: #1a1a2e;
-              padding: 16px;
-              text-align: left;
-              font-size: 13px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
-            td {
-              padding: 16px;
-              border-bottom: 1px solid rgba(0, 212, 255, 0.2);
-              font-size: 15px;
-            }
-            tr:last-child td {
-              border-bottom: none;
-            }
-            tr:hover {
-              background: rgba(0, 212, 255, 0.1);
-            }
-            @media (max-width: 768px) {
-              .container { padding: 30px 20px; }
-              .tournament-title { font-size: 36px; }
-              th, td { padding: 12px 8px; font-size: 14px; }
-            }
+            body { background: #1a1a2e; color: #fff; font-family: sans-serif; padding: 40px; }
+            .container { background: #16213e; border: 3px solid #00d4ff; padding: 60px; }
+            th { background: #00d4ff; color: #1a1a2e; }
+            td { border-bottom: 1px solid #00d4ff; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <div class="tournament-title"> ${tournamentName}</div>
-<div class="badge">Overall STANDINGS</div>
-            </div>
+            <div style="text-align: center; font-size: 52px; font-weight: 900;">${tournamentName}</div>
             <table>
-              <thead>
-                <tr>
-                  <th style="width: 70px;">RANK</th>
-                  <th>TEAM</th>
-                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
-                  <th style="width: 100px; text-align: center;">KILL PTS</th>
-                  <th style="width: 100px; text-align: center;">POS PTS</th>
-                  <th style="width: 100px; text-align: center;">TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows}
-              </tbody>
+              <thead><tr><th>RANK</th><th>TEAM</th><th>BOYAAHS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         </body>
         </html>
       `;
     } else if (templateId === 3) {
-      // Template 3: Esports Championship
       htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>${tournamentName || 'Tournament'} - Points Table</title>
           <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body {
-              font-family: 'Arial Black', sans-serif;
-              background: linear-gradient(135deg, #0a0e27 0%, #1a1a3e 100%);
-              color: #fff;
-              padding: 40px 20px;
-              min-height: 100vh;
-            }
-            .container {
-              max-width: 1200px;
-              margin: 0 auto;
-              background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-              border: 2px solid #f97316;
-              border-radius: 4px;
-              padding: 60px;
-              box-shadow: 0 0 60px rgba(249, 115, 22, 0.4);
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 50px;
-              padding-bottom: 30px;
-              border-bottom: 3px solid #f97316;
-            }
-            .tournament-title {
-              font-size: 56px;
-              font-weight: 900;
-              color: #f97316;
-              margin-bottom: 15px;
-              text-transform: uppercase;
-              letter-spacing: 3px;
-              text-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
-            }
-           
-            .badge {
-              display: inline-block;
-              color: white;
-              padding: 10px 24px;
-              border-radius: 2px;
-              font-size: 25px;
-              font-weight: 900;
-              margin-top: 15px;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 30px;
-            }
-            th {
-              background: #f97316;
-              color: white;
-              padding: 18px;
-              text-align: left;
-              font-size: 13px;
-              font-weight: 900;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-            }
-            td {
-              padding: 16px 18px;
-              border-bottom: 1px solid #374151;
-              font-size: 15px;
-            }
-            tr:last-child td {
-              border-bottom: none;
-            }
-            tr:hover {
-              background: rgba(249, 115, 22, 0.1);
-            }
-            @media (max-width: 768px) {
-              .container { padding: 30px 20px; }
-              .tournament-title { font-size: 40px; }
-              th, td { padding: 12px 10px; font-size: 14px; }
-            }
+            body { background: #0a0e27; color: #fff; font-family: sans-serif; padding: 40px; }
+            .container { background: #1f2937; border: 2px solid #f97316; padding: 60px; }
+            th { background: #f97316; color: white; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <div class="tournament-title"> ${tournamentName}</div>
-<div class="badge">Overall STANDINGS</div>
-            </div>
+            <div style="text-align: center; font-size: 56px; font-weight: 900;">${tournamentName}</div>
             <table>
-              <thead>
-                <tr>
-                  <th style="width: 70px;">RANK</th>
-                  <th>TEAM</th>
-                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
-                  <th style="width: 100px; text-align: center;">KILL PTS</th>
-                  <th style="width: 100px; text-align: center;">POS PTS</th>
-                  <th style="width: 100px; text-align: center;">TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows}
-              </tbody>
+              <thead><tr><th>RANK</th><th>TEAM</th><th>BOYAAHS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         </body>
         </html>
       `;
     } else if (templateId === 4) {
-      // Template 4: Elite Tournament
       htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>${tournamentName || 'Tournament'} - Points Table</title>
           <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body {
-              font-family: 'Georgia', serif;
-              background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-              color: #fff;
-              padding: 40px 20px;
-              min-height: 100vh;
-            }
-            .container {
-              max-width: 1200px;
-              margin: 0 auto;
-              background: #1f1f1f;
-              border: 3px solid #d4af37;
-              border-radius: 0px;
-              padding: 60px;
-              box-shadow: 0 0 50px rgba(212, 175, 55, 0.3), inset 0 0 30px rgba(212, 175, 55, 0.05);
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 50px;
-              padding-bottom: 40px;
-              border-bottom: 3px solid #d4af37;
-            }
-            .tournament-title {
-              font-size: 54px;
-              font-weight: 900;
-              color: #d4af37;
-              margin-bottom: 15px;
-              text-transform: uppercase;
-              letter-spacing: 4px;
-              font-style: italic;
-            }
-         
-            .badge {
-              display: inline-block;
-
-              color: #ffffffff;
-              padding: 12px 28px;
-              border-radius: 0px;
-              font-size: 25px;
-              font-weight: 900;
-              margin-top: 20px;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 35px;
-            }
-            th {
-              background: #d4af37;
-              color: #1f1f1f;
-              padding: 18px;
-              text-align: left;
-              font-size: 13px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 2px;
-            }
-            td {
-              padding: 16px 18px;
-              border-bottom: 2px solid #333;
-              font-size: 15px;
-            }
-            tr:last-child td {
-              border-bottom: none;
-            }
-            tr:hover {
-              background: rgba(212, 175, 55, 0.08);
-            }
-            @media (max-width: 768px) {
-              .container { padding: 30px 20px; }
-              .tournament-title { font-size: 38px; }
-              th, td { padding: 12px 10px; font-size: 14px; }
-            }
+            body { background: #0f0f0f; color: #fff; font-family: serif; padding: 40px; }
+            .container { background: #1f1f1f; border: 3px solid #d4af37; padding: 60px; }
+            th { background: #d4af37; color: #000; }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <div class="tournament-title"> ${tournamentName}</div>
-<div class="badge">Overall STANDINGS</div>
-            </div>
+            <div style="text-align: center; font-size: 54px; font-weight: 900; color: #d4af37;">${tournamentName}</div>
             <table>
-              <thead>
-                <tr>
-                  <th style="width: 70px;">RANK</th>
-                  <th>TEAM</th>
-                  <th style="width: 100px; text-align: center;">BOYAAHS</th>
-                  <th style="width: 100px; text-align: center;">KILL PTS</th>
-                  <th style="width: 100px; text-align: center;">POS PTS</th>
-                  <th style="width: 100px; text-align: center;">TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows}
-              </tbody>
+              <thead><tr><th>RANK</th><th>TEAM</th><th>BOYAAHS</th><th>KILL PTS</th><th>POS PTS</th><th>TOTAL</th></tr></thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
         </body>
@@ -615,32 +273,23 @@ const SlotTeamFinalResult: React.FC = () => {
       `;
     }
 
-    // Create a temporary container and render HTML to image
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlContent;
     tempDiv.style.position = 'fixed';
     tempDiv.style.left = '-9999px';
-    tempDiv.style.top = '-9999px';
     document.body.appendChild(tempDiv);
 
     try {
-      const canvas = await html2canvas(tempDiv, {
-        backgroundColor: '#fff',
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false
-      });
-
+      const canvas = await html2canvas(tempDiv, { scale: 2 });
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
-      link.download = `${tournamentName}-Points-Table-${new Date().toISOString().split('T')[0]}.png`;
-      document.body.appendChild(link);
+      link.download = `${tournamentName}-Standings.png`;
       link.click();
-      document.body.removeChild(link);
+      if (user) {
+        incrementDownloadStat(user.uid, false);
+      }
     } catch (error) {
-      console.error('Error generating image:', error);
-      alert('Failed to generate template image');
+      console.error(error);
     } finally {
       document.body.removeChild(tempDiv);
       setShowTemplateModal(false);
@@ -711,14 +360,7 @@ const SlotTeamFinalResult: React.FC = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between gap-4 flex-wrap">
-          <button
-            onClick={() => navigate('/slot-team-match')}
-            className="backdrop-blur-md bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-md transition-colors flex items-center"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back to Matches
-          </button>
+        <div className="flex justify-end gap-4 flex-wrap">
 
           <div className="flex gap-4 flex-wrap">
             <button
@@ -748,15 +390,34 @@ const SlotTeamFinalResult: React.FC = () => {
                   id: Date.now(),
                   date: new Date().toLocaleString(),
                   standings: standings,
-                  matches: matches
+                  matches: matches,
+                  tournamentName: tournamentName
                 };
                 history.push(newEntry);
                 localStorage.setItem('slotTeamHistory', JSON.stringify(history));
                 
+                if (user) {
+                  saveTournamentToDb(user.uid, {
+                    name: tournamentName || 'Tournament',
+                    date: newEntry.date,
+                    mode: 'Slot & Teams',
+                    status: 'completed'
+                  });
+
+                  saveHistoryToDb(user.uid, {
+                    tournamentName: tournamentName,
+                    date: newEntry.date,
+                    mode: 'Slot & Teams',
+                    totalMatches: matches.length,
+                    winner: standings[0]?.teamName || '',
+                    pointsTable: standings
+                  });
+                }
+
                 // Clear current match data
                 localStorage.removeItem('slotTeamMatchResults');
                 
-                navigate('/games');
+                navigate('/dashboard');
               }}
               className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white px-6 py-3 rounded-md flex items-center transition-all hover:shadow-lg"
             >
