@@ -1,6 +1,6 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Home, LayoutDashboard, PlusCircle, History as HistoryIcon } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, LayoutDashboard, PlusCircle, History as HistoryIcon, ArrowLeft } from 'lucide-react';
 
 interface ConfigLayoutProps {
   title: string;
@@ -10,6 +10,7 @@ interface ConfigLayoutProps {
 
 const ConfigLayout: React.FC<ConfigLayoutProps> = ({ title, children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   
   return (
     <div className="min-h-screen relative text-gray-100 p-6 pt-4">
@@ -42,9 +43,18 @@ const ConfigLayout: React.FC<ConfigLayoutProps> = ({ title, children }) => {
       </nav>
 
       <div className="relative max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-cyan-400">
-          {title}
-        </h1>
+        <div className="flex items-center gap-4 mb-8">
+          <button 
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white transition-all backdrop-blur-md border border-white/5 shadow-md flex items-center justify-center group"
+            title="Go Back"
+          >
+            <ArrowLeft size={22} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-cyan-400">
+            {title}
+          </h1>
+        </div>
         
         {children}
       </div>
